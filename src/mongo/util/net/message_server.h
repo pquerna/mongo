@@ -54,8 +54,9 @@ namespace mongo {
         struct Options {
             int port;                   // port to bind to
             string ipList;             // addresses to bind to
+            bool proxyProtocol;
 
-            Options() : port(0), ipList("") {}
+            Options() : port(0), ipList(""), proxyProtocol(false) {}
         };
 
         virtual ~MessageServer() {}

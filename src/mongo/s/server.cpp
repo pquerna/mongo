@@ -291,6 +291,7 @@ static bool runMongosServer( bool doUpgrade ) {
     MessageServer::Options opts;
     opts.port = cmdLine.port;
     opts.ipList = cmdLine.bind_ip;
+    opts.proxyProtocol = cmdline.proxyProtocol;
     start(opts);
 
     // listen() will return when exit code closes its socket.

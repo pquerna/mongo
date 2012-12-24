@@ -47,7 +47,7 @@ namespace mongo {
          *     and should make sure that it lives longer than this server.
          */
         PortMessageServer(  const MessageServer::Options& opts, MessageHandler * handler ) :
-            Listener( "" , opts.ipList, opts.port ), _handler(handler) {
+            Listener( "" , opts.ipList, opts.port, true), _handler(handler), _proxyProtocol(opts.proxyProtocol) {
         }
 
         virtual void acceptedMP(MessagingPort * p) {
@@ -66,7 +66,7 @@ namespace mongo {
             try {
 #ifndef __linux__  // TODO: consider making this ifdef _WIN32
                 {
-                    HandleIncomingMsgParam* himParam = new HandleIncomingMsgParam(p, _handler);
+                    HandleIncomingMsgParam* himParam = new HandleIncomingMsgParam(p, _handler, _proxyProtocol);
                     boost::thread thr(boost::bind(&handleIncomingMsg, himParam));
                 }
 #else
@@ -88,7 +88,7 @@ namespace mongo {
 
 
                 pthread_t thread;
-                HandleIncomingMsgParam* himParam = new HandleIncomingMsgParam(p, _handler);
+                HandleIncomingMsgParam* himParam = new HandleIncomingMsgParam(p, _handler, _proxyProtocol);
                 int failed = pthread_create(&thread, &attrs, &handleIncomingMsg, himParam);
 
                 pthread_attr_destroy(&attrs);
@@ -132,18 +132,20 @@ namespace mongo {
 
     private:
         MessageHandler* _handler;
+        bool _proxyProtocol;
 
         /**
          * Simple holder for threadRun parameters. Should not destroy the objects it holds -
          * it is the responsibility of the caller to take care of them.
          */
         struct HandleIncomingMsgParam {
-            HandleIncomingMsgParam(MessagingPort* inPort,  MessageHandler* handler):
-                inPort(inPort), handler(handler) {
+            HandleIncomingMsgParam(MessagingPort* inPort,  MessageHandler* handler, bool proxyProtocol):
+                inPort(inPort), handler(handler), proxyProtocol(proxyProtocol) {
             }
 
             MessagingPort* inPort;
             MessageHandler* handler;
+            bool proxyProtocol;
         };
 
         /**
@@ -183,9 +185,12 @@ namespace mongo {
                 LastError * le = new LastError();
                 lastError.reset( le ); // lastError now has ownership
 
-                otherSide = p->psock->remoteString();
-
                 p->psock->doSSLHandshake();
+                if (himArg->proxyProtocol) {
+                  p->psock->doProxyProtocol();
+                }
+
+                otherSide = p->psock->remoteString();
                 handler->connected( p.get() );
 
                 while ( ! inShutdown() ) {

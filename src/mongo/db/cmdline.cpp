@@ -80,6 +80,7 @@ namespace {
         ("bind_ip", po::value<string>(&cmdLine.bind_ip), "comma separated list of ip addresses to listen on - all local ips by default")
         ("maxConns",po::value<int>(), maxConnInfoBuilder.str().c_str())
         ("logpath", po::value<string>() , "log file to send write to instead of stdout - has to be a file, not directory" )
+        ("proxyProtocol",  po::bool_switch(&cmdLine.proxyProtocol), "Enable support for the Proxy Protocol form clients." )
         ("logappend" , "append to logpath instead of over-writing" )
         ("pidfilepath", po::value<string>(), "full path to pidfile (if not set, no pidfile is created)")
         ("keyFile", po::value<string>(), "private key for cluster authentication")

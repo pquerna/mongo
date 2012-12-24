@@ -405,6 +405,9 @@ namespace mongo {
 
     Socket::~Socket() {
         close();
+        if ( _tmpBuf ) {
+          free(_tmpBuf);
+        }
 #ifdef MONGO_SSL
         if ( _ssl ) {
             SSL_shutdown( _ssl );
@@ -421,6 +424,10 @@ namespace mongo {
         _ssl = 0;
         _sslAccepted = 0;
 #endif
+        _proxyProtocolDone = false;
+        _tmpBuf = NULL;
+        _tempBufOff = 0;
+        _tempBufSize = 0;
     }
 
     void Socket::close() {
@@ -443,6 +450,62 @@ namespace mongo {
         _sslAccepted = ssl;
     }
 #endif
+
+    void Socket::doProxyProtocol() {
+      if (_proxyProtocolDone) {
+        return;
+      }
+      else {
+        /*
+         * http://haproxy.1wt.eu/download/1.5/doc/proxy-protocol.txt
+         */
+
+         _proxyProtocolDone = true;
+
+        /* Maximum line length of a PROXY line is 108 bytes including NULL, minimum size is 15 bytes. */
+        char buf[108];
+        char sourceAddr[108];
+        unsigned short sourcePort;
+        char destAddr[108];
+        unsigned short destPort;
+        int protoType;
+
+        int sz = unsafe_recv(buf, sizeof(buf) - 1);
+        if ( sz < 15 ) {
+          throw SocketException( SocketException::PROXYPROTOCOL_ERROR , "Length too short for PROXY line." );
+        }
+
+        if ( memcmp(buf, "PROXY", 5) != 0 ) {
+          throw SocketException( SocketException::PROXYPROTOCOL_ERROR , "Line did not start with PROXY." );
+        }
+
+        char *p = (char *)memchr( buf , '\n', sz - 1 );
+        if ( !p || p[1] != '\n' ) {
+          throw SocketException( SocketException::PROXYPROTOCOL_ERROR , "Partial or invalid header PROXY line." );
+        }
+
+        /* Put any extra data we go into the temp buffer */
+        int len = (buf - p) + 1;
+
+        *p = '\0';
+
+        if ( len < sz ) {
+          _tmpBuf = static_cast<char *>(malloc(sz - len));
+          _tempBufSize = sz - len;
+          memcpy(_tmpBuf, p + 1, _tempBufSize);
+        }
+
+
+        int rv = sscanf(buf, "PROXY TCP%d %s %s %hu %hu",
+                        &protoType, sourceAddr, destAddr, &sourcePort, &destPort);
+
+        if ( rv != 5 ) {
+          throw SocketException( SocketException::PROXYPROTOCOL_ERROR , "Invalid Proxy Line" );
+        }
+
+        _proxyRemote = SockAddr(sourceAddr, sourcePort);
+      }
+    }
 
     void Socket::doSSLHandshake() {
 #ifdef MONGO_SSL
@@ -633,6 +696,19 @@ namespace mongo {
     }
 
     int Socket::unsafe_recv( char *buf, int max ) {
+        if (_tempBufSize > 0) {
+            int off = min(max, _tempBufSize);
+            memcpy(_tmpBuf + _tempBufOff, buf, off);
+            _tempBufSize -= off;
+            _tempBufOff += off;
+            if (_tempBufSize <= 0) {
+              _tempBufSize = 0;
+              free(_tmpBuf);
+              _tmpBuf = NULL;
+            }
+            return off;
+        }
+
         int x = _recv( buf , max );
         _bytesIn += x;
         return x;

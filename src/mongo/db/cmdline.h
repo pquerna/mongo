@@ -56,6 +56,7 @@ namespace mongo {
         std::string bind_ip;        // --bind_ip
         bool rest;             // --rest
         bool jsonp;            // --jsonp
+        bool proxyProtocol;  // --proxyProtocol
 
         std::string _replSet;       // --replSet[/<seedlist>]
         std::string ourSetName() const {

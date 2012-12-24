@@ -271,6 +271,7 @@ namespace mongo {
         MessageServer::Options options;
         options.port = port;
         options.ipList = cmdLine.bind_ip;
+        options.proxyProtocol = cmdLine.proxyProtocol;
 
         MessageServer * server = createServer( options , new MyMessageHandler() );
         server->setAsTimeTracker();

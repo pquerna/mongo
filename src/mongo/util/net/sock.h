@@ -135,7 +135,7 @@ namespace mongo {
      */
     class SocketException : public DBException {
     public:
-        const enum Type { CLOSED , RECV_ERROR , SEND_ERROR, RECV_TIMEOUT, SEND_TIMEOUT, FAILED_STATE, CONNECT_ERROR } _type;
+        const enum Type { CLOSED , RECV_ERROR , SEND_ERROR, RECV_TIMEOUT, SEND_TIMEOUT, FAILED_STATE, CONNECT_ERROR, PROXYPROTOCOL_ERROR } _type;
         
         SocketException( Type t , const std::string& server , int code = 9001 , const std::string& extra="" ) 
             : DBException( (string)"socket exception ["  + _getStringType( t ) + "] for " + server, code ),
@@ -161,6 +161,7 @@ namespace mongo {
                 case SEND_TIMEOUT:  return "SEND_TIMEOUT";
                 case FAILED_STATE:  return "FAILED_STATE";
                 case CONNECT_ERROR: return "CONNECT_ERROR";
+                case PROXYPROTOCOL_ERROR: return "PROXYPROTOCOL_ERROR";
                 default:            return "UNKNOWN"; // should never happen
             }
         }
@@ -201,9 +202,17 @@ namespace mongo {
         int getLogLevel() const { return _logLevel; }
         void setLogLevel( int ll ) { _logLevel = ll; }
 
-        SockAddr remoteAddr() const { return _remote; }
-        string remoteString() const { return _remote.toString(); }
-        unsigned remotePort() const { return _remote.getPort(); }
+        SockAddr remoteAddr() const {
+            if ( _proxyRemote.getType() != AF_UNSPEC ) {
+              return _proxyRemote;
+            }
+            else {
+              return _remote;
+            }
+          }
+
+        string remoteString() const { return remoteAddr().toString(); }
+        unsigned remotePort() const { return remoteAddr().getPort(); }
 
         void clearCounters() { _bytesIn = 0; _bytesOut = 0; }
         long long getBytesIn() const { return _bytesIn; }
@@ -225,7 +234,8 @@ namespace mongo {
          * This function may throw SocketException.
          */
         void doSSLHandshake();
-        
+        void doProxyProtocol();
+
         /**
          * @return the time when the socket was opened.
          */
@@ -251,6 +261,7 @@ namespace mongo {
         int _fd;
         uint64_t _fdCreationMicroSec;
         SockAddr _remote;
+        SockAddr _proxyRemote;
         double _timeout;
 
         long long _bytesIn;
@@ -261,7 +272,10 @@ namespace mongo {
         SSLManager * _sslAccepted;
 #endif
         int _logLevel; // passed to log() when logging errors
-
+        bool _proxyProtocolDone;
+        int _tempBufSize;
+        int _tempBufOff;
+        char *_tmpBuf;
     };
 
 
